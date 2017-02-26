@@ -2,10 +2,16 @@
 //
 
 #include "stdafx.h"
+#include "NetworkConnections.h"
 
 
 int main()
 {
-    return 0;
+	NetworkConnections *nc = new NetworkConnections();
+	nc->BuildConnectionsTable();
+	nc->PrintConnections();
+	delete nc;
+
+	return 0;
 }
 

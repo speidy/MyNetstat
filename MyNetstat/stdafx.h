@@ -11,5 +11,12 @@
 #include <tchar.h>
 
 
-
 // TODO: reference additional headers your program requires here
+
+#pragma comment(lib, "ws2_32.lib")
+
+#include <winsock2.h>
+#include <ws2ipdef.h>
+
+
+#include <Windows.h>
