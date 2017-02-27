@@ -2,6 +2,7 @@
 #include <iphlpapi.h>
 #include <vector>
 #include <string>
+
 using namespace std;
 
 class NetworkConnections
@@ -17,7 +18,6 @@ public:
 		IPv4,
 		IPv6
 	};
-
 	struct ConnectionEntry
 	{
 		ConnectionType connectionType;
@@ -28,7 +28,7 @@ public:
 		DWORD			remotePort;
 		string			connectionSate;
 		DWORD			ownerPid;
-		wstring		serviceName;
+		wstring			serviceName;
 		string			creationTimestamp;
 
 		ConnectionEntry(ConnectionType connection_type, IPVersion ip_version, const string& local_address,
@@ -50,10 +50,9 @@ public:
 
 	NetworkConnections();
 	~NetworkConnections();
-	void BuildConnectionsTable();
-	vector<ConnectionEntry> GetConnectionsTable();
-	void PrintConnections();
-
+	void buildConnectionsTable();
+	vector<ConnectionEntry> getConnectionsTable();
+	void printConnections();
 private:
 	typedef decltype(&GetExtendedTcpTable) PGetExtendedTcpTable;
 	typedef decltype(&GetExtendedUdpTable) PGetExtendedUdpTable;
@@ -82,13 +81,13 @@ private:
 		);
 
 private:
-	void BuildConnectionsTableWin2000();
+	void buildConnectionsTableWin2000();
 	void initializeHelperLibs();
-	static string ConnectionStateAsString(DWORD state);
+	static string connectionStateAsString(DWORD state);
 	static string timestampAsString(const LARGE_INTEGER& li_create_timestamp);
 	static string ipAddressAsString(IPVersion ver, const void *addr);
 	wstring getSerivceNameByTag(ULONG pid, ULONG serviceTag) const;
-
+	
 private:
 	vector<ConnectionEntry> m_ConnectionTable;
 	PGetExtendedTcpTable m_pfnGetExtendedTcpTable;
@@ -96,5 +95,5 @@ private:
 	PGetTcpTable m_pfnGetTcpTable;
 	PGetUdpTable m_pfnGetUdpTable;
 	PQueryTagInformation m_pfnQueryTagInformation;
-	bool m_IsNewApiSupported;
+	bool m_isNewApiSupported;
 };

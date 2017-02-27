@@ -4,14 +4,13 @@
 #include "stdafx.h"
 #include "NetworkConnections.h"
 
-
 int main()
 {
 	NetworkConnections *nc = new NetworkConnections();
-	nc->BuildConnectionsTable();
-	nc->PrintConnections();
+	nc->buildConnectionsTable();
+	nc->printConnections();
 	delete nc;
-
+	
 	return 0;
 }
 

@@ -1,5 +1,7 @@
 #include "stdafx.h"
+#include <windef.h>
 #include "NetworkConnections.h"
+#include "TdiUtil.h"
 #include <sstream>
 #include <iostream>
 #include <iomanip>
@@ -23,7 +25,7 @@ static const string TCP_STATES_STR[] =
 
 NetworkConnections::NetworkConnections() :
 	m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr),
-	m_pfnGetTcpTable(nullptr), m_pfnGetUdpTable(nullptr) , m_IsNewApiSupported(false)
+	m_pfnGetTcpTable(nullptr), m_pfnGetUdpTable(nullptr), m_isNewApiSupported(false)
 {
 	initializeHelperLibs();
 }
@@ -32,19 +34,19 @@ NetworkConnections::~NetworkConnections()
 {
 }
 
-vector<NetworkConnections::ConnectionEntry> NetworkConnections::GetConnectionsTable()
+vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable()
 {
-	BuildConnectionsTable();
+	buildConnectionsTable();
 	return m_ConnectionTable;
 }
 
-void NetworkConnections::PrintConnections()
+void NetworkConnections::printConnections()
 {
 	/* print table header */
-	cout << left << setw(10) << "Proto" << setw(15) << "Local Address" << setw(7) << "Port" << setw(15) <<
+	cout << left << setw(10) << "Proto" << setw(17) << "Local Address" << setw(7) << "Port" << setw(17) <<
 		"Remote Address" << setw(7) << "Port" << setw(15) << "State" << setw(7) << "PID" << setw(20) <<
-		 "Timestamp" << setw(15) << "Service Name" << endl;
-	
+		"Timestamp" << setw(15) << "Service Name" << endl;
+
 	/* print connection entries */
 	for (ConnectionEntry entry : m_ConnectionTable)
 	{
@@ -52,8 +54,8 @@ void NetworkConnections::PrintConnections()
 		string proto = entry.connectionType == TCP ? "TCP" : "UDP";
 		proto += ipVer;
 
-		cout << left << setw(10) << proto << setw(15) << entry.localAddress << setw(7) << entry.localPort <<
-			setw(15) << entry.remoteAddress << setw(7) << entry.remotePort << setw(15) << entry.connectionSate << 
+		cout << left << setw(10) << proto << setw(17) << entry.localAddress << setw(7) << entry.localPort <<
+			setw(17) << entry.remoteAddress << setw(7) << entry.remotePort << setw(15) << entry.connectionSate <<
 			setw(7) << entry.ownerPid << setw(20) << entry.creationTimestamp << setw(15);
 		wcout << entry.serviceName << endl;
 	}
@@ -62,7 +64,7 @@ void NetworkConnections::PrintConnections()
 
 }
 
-void NetworkConnections::BuildConnectionsTableWin2000()
+void NetworkConnections::buildConnectionsTableWin2000()
 {
 	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
 	{
@@ -71,11 +73,12 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 	}
 
 	/* Build UDP/TCP handle list */
-	// TODO
+	auto pidList = TdiUtil::getConnectionsInfo();
 
 	/* TCP Connections, IPv4 only */
 	PMIB_TCPTABLE pTcpTable;
 	DWORD cbTcpTable;
+
 
 	cbTcpTable = 0;
 	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetTcpTable(nullptr, &cbTcpTable, TRUE))
@@ -86,6 +89,17 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 			for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
 			{
 				MIB_TCPROW tcpRow = pTcpTable->table[i];
+				DWORD ownerPID = 0;
+				for (TdiUtil::ConnectionInfo e : pidList)
+				{
+					if (e.type == TCP &&
+						e.localAddress == tcpRow.dwLocalAddr &&
+						e.localPort == tcpRow.dwLocalPort)
+					{
+						ownerPID = e.ownerPid;
+						break;
+					}
+				}
 				ConnectionEntry e(
 					TCP,
 					IPv4,
@@ -93,9 +107,9 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 					ntohs(tcpRow.dwLocalPort),
 					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
 					ntohs(tcpRow.dwRemotePort),
-					ConnectionStateAsString(tcpRow.dwState),
-					/*GetOwningPid(tcpRow.dwLocalAddr, tcpRow.dwLocalPort)*/ 0,
-					/*"getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo))*/ L"",
+					connectionStateAsString(tcpRow.dwState),
+					ownerPID,
+					L"",
 					""
 				);
 				m_ConnectionTable.push_back(e);
@@ -111,7 +125,7 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 	PMIB_UDPTABLE pUdpTable;
 	DWORD cbUdpTable;
 
-	cbTcpTable = 0;
+	cbUdpTable = 0;
 	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetUdpTable(nullptr, &cbUdpTable, TRUE))
 	{
 		pUdpTable = reinterpret_cast<PMIB_UDPTABLE>(new byte[cbUdpTable]);
@@ -119,20 +133,33 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 		{
 			for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
 			{
-				//MIB_UDPROW udpRow = pUdpTable->table[i];
-				//ConnectionEntry e(
-				//	UDP,
-				//	IPv4,
-				//	ipAddressAsString(IPv4, udpRow.dwLocalAddr),
-				//	udpRow.dwLocalPort,
-				//	"",
-				//	0,
-				//	"",
-				//	GetOwningPid(udpTcpList, udpRow.dwLocalAddr, udpRow.dwLocalPort),
-				//	getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
-				//	timestampAsString(udpRow.liCreateTimestamp)
-				//);
-				//m_ConnectionTable.push_back(e);
+				MIB_UDPROW udpRow = pUdpTable->table[i];
+				
+				DWORD ownerPID = 0;
+				for (TdiUtil::ConnectionInfo e : pidList)
+				{
+					if (e.type == TCP &&
+						e.localAddress == udpRow.dwLocalAddr &&
+						e.localPort == udpRow.dwLocalPort)
+					{
+						ownerPID = e.ownerPid;
+						break;
+					}
+				}
+
+				ConnectionEntry e(
+					UDP,
+					IPv4,
+					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
+					udpRow.dwLocalPort,
+					"",
+					0,
+					"",
+					ownerPID,
+					L"",
+					""
+				);
+				m_ConnectionTable.push_back(e);
 			}
 		}
 		if (pUdpTable)
@@ -142,19 +169,19 @@ void NetworkConnections::BuildConnectionsTableWin2000()
 	}
 }
 
-string NetworkConnections::ConnectionStateAsString(DWORD state)
+string NetworkConnections::connectionStateAsString(DWORD state)
 {
 	return TCP_STATES_STR[state];
 }
 
-void NetworkConnections::BuildConnectionsTable()
+void NetworkConnections::buildConnectionsTable()
 {
 	/* clear old entries */
 	m_ConnectionTable.clear();
 
-	if (!m_IsNewApiSupported)
+	if (!m_isNewApiSupported)
 	{
-		BuildConnectionsTableWin2000();
+		buildConnectionsTableWin2000();
 		return;
 	}
 
@@ -163,7 +190,7 @@ void NetworkConnections::BuildConnectionsTable()
 	DWORD cbTcpTable;
 
 	cbTcpTable = 0;
-	if(ERROR_INSUFFICIENT_BUFFER == m_pfnGetExtendedTcpTable(nullptr, &cbTcpTable, TRUE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0))
+	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetExtendedTcpTable(nullptr, &cbTcpTable, TRUE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0))
 	{
 		pTcpTable = reinterpret_cast<PMIB_TCPTABLE_OWNER_MODULE>(new byte[cbTcpTable]);
 		if (NO_ERROR == m_pfnGetExtendedTcpTable(pTcpTable, &cbTcpTable, TRUE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0))
@@ -178,7 +205,7 @@ void NetworkConnections::BuildConnectionsTable()
 					ntohs(tcpRow.dwLocalPort),
 					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
 					ntohs(tcpRow.dwRemotePort),
-					ConnectionStateAsString(tcpRow.dwState),
+					connectionStateAsString(tcpRow.dwState),
 					tcpRow.dwOwningPid,
 					getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
 					timestampAsString(tcpRow.liCreateTimestamp)
@@ -212,7 +239,7 @@ void NetworkConnections::BuildConnectionsTable()
 					ntohs(tcpRow.dwLocalPort),
 					ipAddressAsString(IPv6, tcpRow.ucRemoteAddr),
 					ntohs(tcpRow.dwRemotePort),
-					ConnectionStateAsString(tcpRow.dwState),
+					connectionStateAsString(tcpRow.dwState),
 					tcpRow.dwOwningPid,
 					getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
 					timestampAsString(tcpRow.liCreateTimestamp)
@@ -225,7 +252,7 @@ void NetworkConnections::BuildConnectionsTable()
 			delete pTcp6Table;
 		}
 	}
-	
+
 	/* UDP Connections, IPv4 */
 	PMIB_UDPTABLE_OWNER_MODULE pUdpTable;
 	DWORD cbUdpTable;
@@ -308,7 +335,7 @@ void NetworkConnections::initializeHelperLibs()
 
 	if (m_pfnGetExtendedTcpTable && m_pfnGetExtendedUdpTable)
 	{
-		m_IsNewApiSupported = true;
+		m_isNewApiSupported = true;
 	}
 }
 
@@ -321,14 +348,9 @@ string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 	ft.dwLowDateTime = ts.LowPart;
 	ft.dwHighDateTime = ts.HighPart;
 	FileTimeToSystemTime(&ft, &st);
-	
+
 	timestamp << st.wDay << "-" << st.wMonth << "-" << st.wYear << " " <<
 		st.wHour << ":" << st.wMinute << ":" << st.wSecond;
-
-	//printf("%5d %s %s %6d %5d %04d-%02d-%02d %02d:%02d:%02d.%03d\n",
-	//	index, afStr, protoStr, connections->Records[index].ProcessId,
-	//	connections->Records[index].Port, st.wYear, st.wMonth, st.wDay,
-	//	st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
 	return timestamp.str();
 }
@@ -336,11 +358,12 @@ string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 string NetworkConnections::ipAddressAsString(IPVersion ver, const void *addr)
 {
 	ostringstream ipAddress;
-	DWORD ip;
+
 
 	switch (ver)
 	{
 	case IPv4:
+		DWORD ip;
 		unsigned char bytes[4];
 		ip = *(DWORD *)addr;
 		bytes[0] = ip & 0xFF;
@@ -354,14 +377,13 @@ string NetworkConnections::ipAddressAsString(IPVersion ver, const void *addr)
 		break;
 	case IPv6:
 		UCHAR *ip6 = (UCHAR *)addr;
-		ipAddress << "[" << hex << (int)ip6[0] << hex << (int)ip6[1] << ":" << hex << (int)ip6[2] <<  hex << (int)ip6[3] << ":" <<
+		ipAddress << "[" << hex << (int)ip6[0] << hex << (int)ip6[1] << ":" << hex << (int)ip6[2] << hex << (int)ip6[3] << ":" <<
 			hex << (int)ip6[4] << hex << (int)ip6[5] << ":" << hex << (int)ip6[6] << hex << (int)ip6[7] << ":" <<
 			hex << (int)ip6[8] << hex << (int)ip6[9] << ":" << hex << (int)ip6[10] << hex << (int)ip6[11] << ":" <<
 			hex << (int)ip6[12] << hex << (int)ip6[13] << ":" << hex << (int)ip6[14] << hex << (int)ip6[15]
 			<< "]";
 		break;
 	}
-
 
 	return ipAddress.str();
 }
