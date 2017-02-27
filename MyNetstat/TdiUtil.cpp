@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "TdiUtil.h"
 
-void TdiUtil::EnableDebugPrivilege()
+void TdiUtil::enableDebugPrivilege()
 {
 	HANDLE hToken;
 	TOKEN_PRIVILEGES tokenPriv;
@@ -17,7 +17,7 @@ void TdiUtil::EnableDebugPrivilege()
 	}
 }
 
-LPWSTR TdiUtil::GetObjectName(HANDLE hObject)
+LPWSTR TdiUtil::getObjectName(HANDLE hObject)
 {
 	LPWSTR lpwsReturn = nullptr;
 	tNTQO pNTQO = reinterpret_cast<tNTQO>(GetProcAddress(GetModuleHandle(L"NTDLL.DLL"), "NtQueryObject"));
@@ -41,7 +41,7 @@ LPWSTR TdiUtil::GetObjectName(HANDLE hObject)
 	return lpwsReturn;
 }
 
-void TdiUtil::OutputConnectionDetails(HANDLE hObject, in_addr *ip, DWORD *port)
+void TdiUtil::getConnectionDetails(HANDLE hObject, in_addr *ip, DWORD *port)
 {
 	tNTDIOCF pNTDIOCF = reinterpret_cast<tNTDIOCF>(GetProcAddress(GetModuleHandle(L"NTDLL.DLL"), "NtDeviceIoControlFile"));
 	if (pNTDIOCF != NULL) {
@@ -69,7 +69,7 @@ vector<TdiUtil::ConnectionInfo> TdiUtil::getConnectionsInfo()
 {
 	vector<ConnectionInfo> v;
 
-	EnableDebugPrivilege();
+	enableDebugPrivilege();
 
 	tNTQSI pNTQSI = reinterpret_cast<tNTQSI>(GetProcAddress(GetModuleHandle(L"NTDLL.DLL"), "NtQuerySystemInformation"));
 	if (pNTQSI != nullptr) {
@@ -92,16 +92,13 @@ vector<TdiUtil::ConnectionInfo> TdiUtil::getConnectionsInfo()
 					if (DuplicateHandle(hProcess, reinterpret_cast<HANDLE>(pHandleInfo->Handles[dwIdx].Handle),
 						GetCurrentProcess(), &hObject, STANDARD_RIGHTS_REQUIRED, FALSE, 0) != FALSE)
 					{
-						LPWSTR lpwsName = GetObjectName(hObject);
+						LPWSTR lpwsName = getObjectName(hObject);
 						if (lpwsName != nullptr) {
-							if (!wcscmp(lpwsName, L"\\Device\\Tcp") || !wcscmp(lpwsName, L"\\Device\\Udp"))
+							struct in_addr ipaddr;
+							DWORD port;
+							if (!wcscmp(lpwsName, L"\\Device\\Tcp"))
 							{
-								LPSTR lpszProcess = new CHAR[MAX_PATH];
-								struct in_addr ipaddr;
-								DWORD port;
-
-								OutputConnectionDetails(hObject, &ipaddr, &port);
-								ZeroMemory(lpszProcess, MAX_PATH);
+								getConnectionDetails(hObject, &ipaddr, &port);
 								ConnectionInfo e(
 									TCP,
 									ipaddr.S_un.S_addr,
@@ -109,7 +106,18 @@ vector<TdiUtil::ConnectionInfo> TdiUtil::getConnectionsInfo()
 									pHandleInfo->Handles[dwIdx].uIdProcess
 								);
 								v.push_back(e);
-								delete lpszProcess;
+							}
+
+							if (!wcscmp(lpwsName, L"\\Device\\Udp"))
+							{
+								getConnectionDetails(hObject, &ipaddr, &port);
+								ConnectionInfo e(
+									UDP,
+									ipaddr.S_un.S_addr,
+									port,
+									pHandleInfo->Handles[dwIdx].uIdProcess
+								);
+								v.push_back(e);
 							}
 
 							delete lpwsName;
@@ -125,7 +133,8 @@ vector<TdiUtil::ConnectionInfo> TdiUtil::getConnectionsInfo()
 		}
 		delete pHandleInfo;
 	}
-	else {
+	else 
+	{
 		printf("Cannot find NtQuerySystemInformation API... Is this system not Win2K and above?");
 	}
 

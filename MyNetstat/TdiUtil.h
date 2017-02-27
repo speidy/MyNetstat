@@ -30,9 +30,9 @@ public:
 
 	static vector<ConnectionInfo> getConnectionsInfo();
 private:
-	static void EnableDebugPrivilege();
-	static LPWSTR GetObjectName(HANDLE hObject);
-	static void OutputConnectionDetails(HANDLE hObject, in_addr *ip, DWORD *port);
+	static void enableDebugPrivilege();
+	static LPWSTR getObjectName(HANDLE hObject);
+	static void getConnectionDetails(HANDLE hObject, in_addr *ip, DWORD *port);
 
 private:
 	typedef LONG NTSTATUS;
