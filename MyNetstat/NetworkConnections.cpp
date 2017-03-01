@@ -33,6 +33,20 @@ NetworkConnections::~NetworkConnections()
 {
 }
 
+void NetworkConnections::initializeHelperLibs()
+{
+	auto hIpHlpApi = LoadLibrary(L"iphlpapi.dll");
+	m_pfnGetExtendedTcpTable = reinterpret_cast<PGetExtendedTcpTable>(GetProcAddress(hIpHlpApi, "GetExtendedTcpTable"));
+	m_pfnGetExtendedUdpTable = reinterpret_cast<PGetExtendedUdpTable>(GetProcAddress(hIpHlpApi, "GetExtendedUdpTable"));
+	m_pfnGetTcpTable = reinterpret_cast<PGetTcpTable>(GetProcAddress(hIpHlpApi, "GetTcpTable"));
+	m_pfnGetUdpTable = reinterpret_cast<PGetUdpTable>(GetProcAddress(hIpHlpApi, "GetUdpTable"));
+	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
+	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
+
+	auto hAdvApi32 = LoadLibrary(L"advapi32.dll");
+	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(hAdvApi32, "I_QueryTagInformation"));
+}
+
 vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable() const
 {
 	return m_ConnectionTable;
@@ -60,6 +74,83 @@ void NetworkConnections::printConnections()
 
 	cout << "Number of connections: " << m_ConnectionTable.size() << endl;
 
+}
+
+
+void NetworkConnections::buildConnectionsTableNoPid()
+{
+	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
+	{
+		return;
+	}
+
+	/* TCP Connections, IPv4 only */
+	PMIB_TCPTABLE pTcpTable;
+	DWORD cbTcpTable;
+
+	cbTcpTable = 0;
+	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetTcpTable(nullptr, &cbTcpTable, TRUE))
+	{
+		pTcpTable = reinterpret_cast<PMIB_TCPTABLE>(new byte[cbTcpTable]);
+		if (NO_ERROR == m_pfnGetTcpTable(pTcpTable, &cbTcpTable, TRUE))
+		{
+			for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
+			{
+				auto tcpRow = pTcpTable->table[i];
+				ConnectionEntry e(
+					TCP,
+					IPv4,
+					ipAddressAsString(IPv4, &tcpRow.dwLocalAddr),
+					ntohs(tcpRow.dwLocalPort),
+					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
+					ntohs(tcpRow.dwRemotePort),
+					connectionStateAsString(tcpRow.dwState),
+					0,
+					L"",
+					""
+				);
+				m_ConnectionTable.push_back(e);
+			}
+		}
+		if (pTcpTable)
+		{
+			delete pTcpTable;
+		}
+	}
+
+	/* UDP Connections, IPv4 only */
+	PMIB_UDPTABLE pUdpTable;
+	DWORD cbUdpTable;
+
+	cbUdpTable = 0;
+	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetUdpTable(nullptr, &cbUdpTable, TRUE))
+	{
+		pUdpTable = reinterpret_cast<PMIB_UDPTABLE>(new byte[cbUdpTable]);
+		if (NO_ERROR == m_pfnGetUdpTable(pUdpTable, &cbUdpTable, TRUE))
+		{
+			for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
+			{
+				auto udpRow = pUdpTable->table[i];
+				ConnectionEntry e(
+					UDP,
+					IPv4,
+					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
+					udpRow.dwLocalPort,
+					"",
+					0,
+					"",
+					0,
+					L"",
+					""
+				);
+				m_ConnectionTable.push_back(e);
+			}
+		}
+		if (pUdpTable)
+		{
+			delete pUdpTable;
+		}
+	}
 }
 
 void NetworkConnections::buildConnectionsTableWin2000()
@@ -270,98 +361,6 @@ void NetworkConnections::buildConnectionsTable()
 	}
 }
 
-void NetworkConnections::initializeHelperLibs()
-{
-	auto hIpHlpApi = LoadLibrary(L"iphlpapi.dll");
-	m_pfnGetExtendedTcpTable = reinterpret_cast<PGetExtendedTcpTable>(GetProcAddress(hIpHlpApi, "GetExtendedTcpTable"));
-	m_pfnGetExtendedUdpTable = reinterpret_cast<PGetExtendedUdpTable>(GetProcAddress(hIpHlpApi, "GetExtendedUdpTable"));
-	m_pfnGetTcpTable = reinterpret_cast<PGetTcpTable>(GetProcAddress(hIpHlpApi, "GetTcpTable"));
-	m_pfnGetUdpTable = reinterpret_cast<PGetUdpTable>(GetProcAddress(hIpHlpApi, "GetUdpTable"));
-	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
-	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
-
-
-	auto hAdvApi32 = LoadLibrary(L"advapi32.dll");
-	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(hAdvApi32, "I_QueryTagInformation"));
-}
-
-void NetworkConnections::buildConnectionsTableNoPid()
-{
-	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
-	{
-		return;
-	}
-
-	/* TCP Connections, IPv4 only */
-	PMIB_TCPTABLE pTcpTable;
-	DWORD cbTcpTable;
-
-	cbTcpTable = 0;
-	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetTcpTable(nullptr, &cbTcpTable, TRUE))
-	{
-		pTcpTable = reinterpret_cast<PMIB_TCPTABLE>(new byte[cbTcpTable]);
-		if (NO_ERROR == m_pfnGetTcpTable(pTcpTable, &cbTcpTable, TRUE))
-		{
-			for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
-			{
-				auto tcpRow = pTcpTable->table[i];
-				ConnectionEntry e(
-					TCP,
-					IPv4,
-					ipAddressAsString(IPv4, &tcpRow.dwLocalAddr),
-					ntohs(tcpRow.dwLocalPort),
-					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
-					ntohs(tcpRow.dwRemotePort),
-					connectionStateAsString(tcpRow.dwState),
-					0,
-					L"",
-					""
-				);
-				m_ConnectionTable.push_back(e);
-			}
-		}
-		if (pTcpTable)
-		{
-			delete pTcpTable;
-		}
-	}
-
-	/* UDP Connections, IPv4 only */
-	PMIB_UDPTABLE pUdpTable;
-	DWORD cbUdpTable;
-
-	cbUdpTable = 0;
-	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetUdpTable(nullptr, &cbUdpTable, TRUE))
-	{
-		pUdpTable = reinterpret_cast<PMIB_UDPTABLE>(new byte[cbUdpTable]);
-		if (NO_ERROR == m_pfnGetUdpTable(pUdpTable, &cbUdpTable, TRUE))
-		{
-			for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
-			{
-				auto udpRow = pUdpTable->table[i];
-				ConnectionEntry e(
-					UDP,
-					IPv4,
-					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
-					udpRow.dwLocalPort,
-					"",
-					0,
-					"",
-					0,
-					L"",
-					""
-				);
-				m_ConnectionTable.push_back(e);
-			}
-		}
-		if (pUdpTable)
-		{
-			delete pUdpTable;
-		}
-	}
-
-}
-
 string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 {
 	ostringstream timestamp;
@@ -381,7 +380,6 @@ string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 string NetworkConnections::ipAddressAsString(IPVersion ver, const void *addr)
 {
 	ostringstream ipAddress;
-
 
 	switch (ver)
 	{
