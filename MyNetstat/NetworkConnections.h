@@ -87,6 +87,7 @@ private:
 
 private:
 	void initializeHelperLibs();
+	void deinitializeHelperLibs() const;
 	void buildConnectionsTableNoPid();
 	void buildConnectionsTableWin2000();
 	static string connectionStateAsString(DWORD state);
@@ -96,6 +97,8 @@ private:
 	
 private:
 	vector<ConnectionEntry> m_ConnectionTable;
+	HMODULE m_hIpHlpApi;
+	HMODULE m_hAdvApi32;
 	PGetExtendedTcpTable m_pfnGetExtendedTcpTable;
 	PGetExtendedUdpTable m_pfnGetExtendedUdpTable;
 	PGetTcpTable m_pfnGetTcpTable;

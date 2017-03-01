@@ -22,7 +22,7 @@ static const string TCP_STATES_STR[] =
 };
 
 NetworkConnections::NetworkConnections() :
-	m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr), m_pfnGetTcpTable(nullptr), 
+	m_hIpHlpApi(nullptr), m_hAdvApi32(nullptr), m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr), m_pfnGetTcpTable(nullptr), 
 	m_pfnGetUdpTable(nullptr), m_pfnAllocateAndGetTcpExTableFromStack(nullptr), m_pfnAllocateAndGetUdpExTableFromStack(nullptr),
 	m_pfnQueryTagInformation(nullptr)
 {
@@ -31,20 +31,27 @@ NetworkConnections::NetworkConnections() :
 
 NetworkConnections::~NetworkConnections()
 {
+	deinitializeHelperLibs();
 }
 
 void NetworkConnections::initializeHelperLibs()
 {
-	auto hIpHlpApi = LoadLibrary(L"iphlpapi.dll");
-	m_pfnGetExtendedTcpTable = reinterpret_cast<PGetExtendedTcpTable>(GetProcAddress(hIpHlpApi, "GetExtendedTcpTable"));
-	m_pfnGetExtendedUdpTable = reinterpret_cast<PGetExtendedUdpTable>(GetProcAddress(hIpHlpApi, "GetExtendedUdpTable"));
-	m_pfnGetTcpTable = reinterpret_cast<PGetTcpTable>(GetProcAddress(hIpHlpApi, "GetTcpTable"));
-	m_pfnGetUdpTable = reinterpret_cast<PGetUdpTable>(GetProcAddress(hIpHlpApi, "GetUdpTable"));
-	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
-	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
+	m_hIpHlpApi = LoadLibrary(L"iphlpapi.dll");
+	m_pfnGetExtendedTcpTable = reinterpret_cast<PGetExtendedTcpTable>(GetProcAddress(m_hIpHlpApi, "GetExtendedTcpTable"));
+	m_pfnGetExtendedUdpTable = reinterpret_cast<PGetExtendedUdpTable>(GetProcAddress(m_hIpHlpApi, "GetExtendedUdpTable"));
+	m_pfnGetTcpTable = reinterpret_cast<PGetTcpTable>(GetProcAddress(m_hIpHlpApi, "GetTcpTable"));
+	m_pfnGetUdpTable = reinterpret_cast<PGetUdpTable>(GetProcAddress(m_hIpHlpApi, "GetUdpTable"));
+	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(m_hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
+	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(m_hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
 
-	auto hAdvApi32 = LoadLibrary(L"advapi32.dll");
-	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(hAdvApi32, "I_QueryTagInformation"));
+	m_hAdvApi32 = LoadLibrary(L"advapi32.dll");
+	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(m_hAdvApi32, "I_QueryTagInformation"));
+}
+
+void NetworkConnections::deinitializeHelperLibs() const
+{
+	FreeLibrary(m_hIpHlpApi);
+	FreeLibrary(m_hAdvApi32);
 }
 
 vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable() const
