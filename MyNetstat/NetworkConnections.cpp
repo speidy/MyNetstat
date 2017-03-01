@@ -1,7 +1,5 @@
 #include "stdafx.h"
-#include <windef.h>
 #include "NetworkConnections.h"
-#include "TdiUtil.h"
 #include <sstream>
 #include <iostream>
 #include <iomanip>
@@ -24,8 +22,9 @@ static const string TCP_STATES_STR[] =
 };
 
 NetworkConnections::NetworkConnections() :
-	m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr),
-	m_pfnGetTcpTable(nullptr), m_pfnGetUdpTable(nullptr), m_isNewApiSupported(false)
+	m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr), m_pfnGetTcpTable(nullptr), 
+	m_pfnGetUdpTable(nullptr), m_pfnAllocateAndGetTcpExTableFromStack(nullptr), m_pfnAllocateAndGetUdpExTableFromStack(nullptr),
+	m_pfnQueryTagInformation(nullptr)
 {
 	initializeHelperLibs();
 }
@@ -66,112 +65,62 @@ void NetworkConnections::printConnections()
 
 void NetworkConnections::buildConnectionsTableWin2000()
 {
-	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
+	if (!(m_pfnAllocateAndGetTcpExTableFromStack && m_pfnAllocateAndGetUdpExTableFromStack))
 	{
 		/* functions not available */
+		buildConnectionsTableNoPid();
 		return;
 	}
 
-	/* Build UDP/TCP handle list */
-	auto pidList = TdiUtil::getConnectionsInfo();
-
 	/* TCP Connections, IPv4 only */
-	PMIB_TCPTABLE pTcpTable;
-	DWORD cbTcpTable;
+	PMIB_TCPTABLE_OWNER_PID pTcpTable;
 
-
-	cbTcpTable = 0;
-	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetTcpTable(nullptr, &cbTcpTable, TRUE))
+	if (ERROR_SUCCESS == m_pfnAllocateAndGetTcpExTableFromStack(reinterpret_cast<LPVOID *>(&pTcpTable), TRUE, GetProcessHeap(), 0, AF_INET))
 	{
-		pTcpTable = reinterpret_cast<PMIB_TCPTABLE>(new byte[cbTcpTable]);
-		if (NO_ERROR == m_pfnGetTcpTable(pTcpTable, &cbTcpTable, TRUE))
+		for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
 		{
-			for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
-			{
-				MIB_TCPROW tcpRow = pTcpTable->table[i];
-				DWORD ownerPID = 0;
-				for (TdiUtil::ConnectionInfo e : pidList)
-				{
-					if (e.type == TCP &&
-						e.localAddress == tcpRow.dwLocalAddr &&
-						e.localPort == tcpRow.dwLocalPort)
-					{
-						ownerPID = e.ownerPid;
-						break;
-					}
-				}
-				ConnectionEntry e(
-					TCP,
-					IPv4,
-					ipAddressAsString(IPv4, &tcpRow.dwLocalAddr),
-					ntohs(tcpRow.dwLocalPort),
-					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
-					ntohs(tcpRow.dwRemotePort),
-					connectionStateAsString(tcpRow.dwState),
-					ownerPID,
-					L"",
-					""
-				);
-				m_ConnectionTable.push_back(e);
-			}
+			auto tcpRow = pTcpTable->table[i];
+			ConnectionEntry e(
+				TCP,
+				IPv4,
+				ipAddressAsString(IPv4, &tcpRow.dwLocalAddr),
+				ntohs(tcpRow.dwLocalPort),
+				ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
+				ntohs(tcpRow.dwRemotePort),
+				connectionStateAsString(tcpRow.dwState),
+				tcpRow.dwOwningPid,
+				L"",
+				""
+			);
+			m_ConnectionTable.push_back(e);
 		}
-		if (pTcpTable)
-		{
-			delete pTcpTable;
-		}
+		HeapFree(GetProcessHeap(), 0, pTcpTable);
 	}
 
 	/* UDP Connections, IPv4 only */
-	PMIB_UDPTABLE pUdpTable;
-	DWORD cbUdpTable;
+	PMIB_UDPTABLE_OWNER_PID pUdpTable;
 
-	cbUdpTable = 0;
-	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetUdpTable(nullptr, &cbUdpTable, TRUE))
+	if (ERROR_SUCCESS == m_pfnAllocateAndGetUdpExTableFromStack(reinterpret_cast<LPVOID *>(&pUdpTable), TRUE, GetProcessHeap(), 0, AF_INET))
 	{
-		pUdpTable = reinterpret_cast<PMIB_UDPTABLE>(new byte[cbUdpTable]);
-		if (NO_ERROR == m_pfnGetUdpTable(pUdpTable, &cbTcpTable, TRUE))
+		for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
 		{
-			for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
-			{
-				MIB_UDPROW udpRow = pUdpTable->table[i];
-				
-				DWORD ownerPID = 0;
-				for (TdiUtil::ConnectionInfo e : pidList)
-				{
-					if (e.type == TCP &&
-						e.localAddress == udpRow.dwLocalAddr &&
-						e.localPort == udpRow.dwLocalPort)
-					{
-						ownerPID = e.ownerPid;
-						break;
-					}
-				}
-
-				ConnectionEntry e(
-					UDP,
-					IPv4,
-					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
-					udpRow.dwLocalPort,
-					"",
-					0,
-					"",
-					ownerPID,
-					L"",
-					""
-				);
-				m_ConnectionTable.push_back(e);
-			}
+			auto udpRow = pUdpTable->table[i];
+			ConnectionEntry e(
+				UDP,
+				IPv4,
+				ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
+				ntohs(udpRow.dwLocalPort),
+				"",
+				0,
+				"",
+				udpRow.dwOwningPid,
+				L"",
+				""
+			);
+			m_ConnectionTable.push_back(e);
 		}
-		if (pUdpTable)
-		{
-			delete pUdpTable;
-		}
+		HeapFree(GetProcessHeap(), 0, pTcpTable);
 	}
-}
-
-string NetworkConnections::connectionStateAsString(DWORD state)
-{
-	return TCP_STATES_STR[state];
 }
 
 void NetworkConnections::buildConnectionsTable()
@@ -179,7 +128,7 @@ void NetworkConnections::buildConnectionsTable()
 	/* clear old entries */
 	m_ConnectionTable.clear();
 
-	if (!m_isNewApiSupported)
+	if (!(m_pfnGetExtendedTcpTable && m_pfnGetExtendedUdpTable))
 	{
 		buildConnectionsTableWin2000();
 		return;
@@ -299,20 +248,20 @@ void NetworkConnections::buildConnectionsTable()
 		{
 			for (DWORD i = 0; i < pUdp6Table->dwNumEntries; ++i)
 			{
-				//MIB_UDP6ROW_OWNER_MODULE udpRow = pUdp6Table->table[i];
-				//ConnectionEntry e(
-				//	UDP,
-				//	IPv6,
-				//	ipAddressAsString(IPv6, udpRow.ucLocalAddr),
-				//	udpRow.dwLocalPort,
-				//	"",
-				//	0,
-				//	"",
-				//	udpRow.dwOwningPid,
-				//	getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
-				//	timestampAsString(udpRow.liCreateTimestamp)
-				//);
-				//m_ConnectionTable.push_back(e);
+				MIB_UDP6ROW_OWNER_MODULE udpRow = pUdp6Table->table[i];
+				ConnectionEntry e(
+					UDP,
+					IPv6,
+					ipAddressAsString(IPv6, udpRow.ucLocalAddr),
+					udpRow.dwLocalPort,
+					"",
+					0,
+					"",
+					udpRow.dwOwningPid,
+					getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
+					timestampAsString(udpRow.liCreateTimestamp)
+				);
+				m_ConnectionTable.push_back(e);
 			}
 		}
 		if (pUdp6Table)
@@ -329,14 +278,89 @@ void NetworkConnections::initializeHelperLibs()
 	m_pfnGetExtendedUdpTable = reinterpret_cast<PGetExtendedUdpTable>(GetProcAddress(hIpHlpApi, "GetExtendedUdpTable"));
 	m_pfnGetTcpTable = reinterpret_cast<PGetTcpTable>(GetProcAddress(hIpHlpApi, "GetTcpTable"));
 	m_pfnGetUdpTable = reinterpret_cast<PGetUdpTable>(GetProcAddress(hIpHlpApi, "GetUdpTable"));
+	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
+	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
+
 
 	auto hAdvApi32 = LoadLibrary(L"advapi32.dll");
 	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(hAdvApi32, "I_QueryTagInformation"));
+}
 
-	if (m_pfnGetExtendedTcpTable && m_pfnGetExtendedUdpTable)
+void NetworkConnections::buildConnectionsTableNoPid()
+{
+	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
 	{
-		m_isNewApiSupported = true;
+		return;
 	}
+
+	/* TCP Connections, IPv4 only */
+	PMIB_TCPTABLE pTcpTable;
+	DWORD cbTcpTable;
+
+	cbTcpTable = 0;
+	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetTcpTable(nullptr, &cbTcpTable, TRUE))
+	{
+		pTcpTable = reinterpret_cast<PMIB_TCPTABLE>(new byte[cbTcpTable]);
+		if (NO_ERROR == m_pfnGetTcpTable(pTcpTable, &cbTcpTable, TRUE))
+		{
+			for (DWORD i = 0; i < pTcpTable->dwNumEntries; ++i)
+			{
+				auto tcpRow = pTcpTable->table[i];
+				ConnectionEntry e(
+					TCP,
+					IPv4,
+					ipAddressAsString(IPv4, &tcpRow.dwLocalAddr),
+					ntohs(tcpRow.dwLocalPort),
+					ipAddressAsString(IPv4, &tcpRow.dwRemoteAddr),
+					ntohs(tcpRow.dwRemotePort),
+					connectionStateAsString(tcpRow.dwState),
+					0,
+					L"",
+					""
+				);
+				m_ConnectionTable.push_back(e);
+			}
+		}
+		if (pTcpTable)
+		{
+			delete pTcpTable;
+		}
+	}
+
+	/* UDP Connections, IPv4 only */
+	PMIB_UDPTABLE pUdpTable;
+	DWORD cbUdpTable;
+
+	cbUdpTable = 0;
+	if (ERROR_INSUFFICIENT_BUFFER == m_pfnGetUdpTable(nullptr, &cbUdpTable, TRUE))
+	{
+		pUdpTable = reinterpret_cast<PMIB_UDPTABLE>(new byte[cbUdpTable]);
+		if (NO_ERROR == m_pfnGetUdpTable(pUdpTable, &cbUdpTable, TRUE))
+		{
+			for (DWORD i = 0; i < pUdpTable->dwNumEntries; ++i)
+			{
+				auto udpRow = pUdpTable->table[i];
+				ConnectionEntry e(
+					UDP,
+					IPv4,
+					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
+					udpRow.dwLocalPort,
+					"",
+					0,
+					"",
+					0,
+					L"",
+					""
+				);
+				m_ConnectionTable.push_back(e);
+			}
+		}
+		if (pUdpTable)
+		{
+			delete pUdpTable;
+		}
+	}
+
 }
 
 string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
@@ -386,6 +410,11 @@ string NetworkConnections::ipAddressAsString(IPVersion ver, const void *addr)
 	}
 
 	return ipAddress.str();
+}
+
+string NetworkConnections::connectionStateAsString(DWORD state)
+{
+	return TCP_STATES_STR[state];
 }
 
 wstring NetworkConnections::getSerivceNameByTag(ULONG pid, ULONG serviceTag) const

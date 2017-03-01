@@ -58,6 +58,11 @@ private:
 	typedef decltype(&GetExtendedUdpTable) PGetExtendedUdpTable;
 	typedef decltype(&GetTcpTable) PGetTcpTable;
 	typedef decltype(&GetUdpTable) PGetUdpTable;
+	typedef NTSTATUS(WINAPI *PAllocateAndGetTcpExTableFromStack) \
+		(PVOID *ppTcpTable, bool bOrder, HANDLE hHeap, DWORD dwAllocFlags, DWORD dwFamily);
+	typedef NTSTATUS(WINAPI *PAllocateAndGetUdpExTableFromStack) \
+		(PVOID *ppUdpTable, bool bOrder, HANDLE hHeap, DWORD dwAllocFlags, DWORD dwFamily);
+
 
 	typedef enum _SC_SERVICE_TAG_QUERY_TYPE
 	{
@@ -81,8 +86,9 @@ private:
 		);
 
 private:
-	void buildConnectionsTableWin2000();
 	void initializeHelperLibs();
+	void buildConnectionsTableNoPid();
+	void buildConnectionsTableWin2000();
 	static string connectionStateAsString(DWORD state);
 	static string timestampAsString(const LARGE_INTEGER& li_create_timestamp);
 	static string ipAddressAsString(IPVersion ver, const void *addr);
@@ -94,6 +100,7 @@ private:
 	PGetExtendedUdpTable m_pfnGetExtendedUdpTable;
 	PGetTcpTable m_pfnGetTcpTable;
 	PGetUdpTable m_pfnGetUdpTable;
+	PAllocateAndGetTcpExTableFromStack m_pfnAllocateAndGetTcpExTableFromStack;
+	PAllocateAndGetUdpExTableFromStack m_pfnAllocateAndGetUdpExTableFromStack;
 	PQueryTagInformation m_pfnQueryTagInformation;
-	bool m_isNewApiSupported;
 };

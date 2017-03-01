@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 #include "NetworkConnections.h"
+#include <iostream>
+
 
 int main()
 {

@@ -27,9 +27,6 @@
     <ClInclude Include="NetworkConnections.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TdiUtil.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -39,9 +36,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="NetworkConnections.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TdiUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
