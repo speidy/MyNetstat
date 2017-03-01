@@ -33,9 +33,8 @@ NetworkConnections::~NetworkConnections()
 {
 }
 
-vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable()
+vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable() const
 {
-	buildConnectionsTable();
 	return m_ConnectionTable;
 }
 
@@ -119,7 +118,7 @@ void NetworkConnections::buildConnectionsTableWin2000()
 			);
 			m_ConnectionTable.push_back(e);
 		}
-		HeapFree(GetProcessHeap(), 0, pTcpTable);
+		HeapFree(GetProcessHeap(), 0, pUdpTable);
 	}
 }
 

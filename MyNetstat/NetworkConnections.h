@@ -51,7 +51,7 @@ public:
 	NetworkConnections();
 	~NetworkConnections();
 	void buildConnectionsTable();
-	vector<ConnectionEntry> getConnectionsTable();
+	vector<ConnectionEntry> getConnectionsTable() const;
 	void printConnections();
 private:
 	typedef decltype(&GetExtendedTcpTable) PGetExtendedTcpTable;
