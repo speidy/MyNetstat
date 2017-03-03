@@ -1,7 +1,6 @@
 #pragma once
 #include <iphlpapi.h>
-#include <vector>
-#include <string>
+
 
 using namespace std;
 
@@ -20,32 +19,16 @@ public:
 	};
 	struct ConnectionEntry
 	{
-		ConnectionType connectionType;
+		ConnectionType	connectionType;
 		IPVersion		ipVersion;
 		string			localAddress;
-		DWORD			localPort;
+		uint16_t		localPort;
 		string			remoteAddress;
-		DWORD			remotePort;
+		uint16_t		remotePort;
 		string			connectionSate;
-		DWORD			ownerPid;
+		uint32_t		ownerPid;
 		wstring			serviceName;
 		string			creationTimestamp;
-
-		ConnectionEntry(ConnectionType connection_type, IPVersion ip_version, const string& local_address,
-			DWORD local_port, const string& remote_address, DWORD remote_port, const string& connection_sate,
-			DWORD owner_pid, const wstring& service_name, const string& creation_timestamp)
-			: connectionType(connection_type),
-			ipVersion(ip_version),
-			localAddress(local_address),
-			localPort(local_port),
-			remoteAddress(remote_address),
-			remotePort(remote_port),
-			connectionSate(connection_sate),
-			ownerPid(owner_pid),
-			serviceName(service_name),
-			creationTimestamp(creation_timestamp)
-		{
-		}
 	};
 
 	NetworkConnections();
@@ -92,7 +75,7 @@ private:
 	void buildConnectionsTableWin2000();
 	static string connectionStateAsString(DWORD state);
 	static string timestampAsString(const LARGE_INTEGER& li_create_timestamp);
-	static string ipAddressAsString(IPVersion ver, const void *addr);
+	static string ipAddressAsString(IPVersion ver, PVOID addr);
 	wstring getSerivceNameByTag(ULONG pid, ULONG serviceTag) const;
 	
 private:

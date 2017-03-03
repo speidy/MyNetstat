@@ -3,8 +3,6 @@
 
 #include "stdafx.h"
 #include "NetworkConnections.h"
-#include <iostream>
-
 
 int main()
 {
@@ -13,6 +11,6 @@ int main()
 	nc->printConnections();
 	delete nc;
 	
-	return 0;
+	return ERROR_SUCCESS;
 }
 
