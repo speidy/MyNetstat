@@ -145,11 +145,13 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AdvApi32.h" />
     <ClInclude Include="NetworkConnections.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AdvApi32.cpp" />
     <ClCompile Include="MyNetstat.cpp" />
     <ClCompile Include="NetworkConnections.cpp" />
     <ClCompile Include="stdafx.cpp">

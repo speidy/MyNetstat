@@ -19,9 +19,8 @@ static const string TCP_STATES_STR[] =
 };
 
 NetworkConnections::NetworkConnections() :
-	m_hIpHlpApi(nullptr), m_hAdvApi32(nullptr), m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr), m_pfnGetTcpTable(nullptr), 
-	m_pfnGetUdpTable(nullptr), m_pfnAllocateAndGetTcpExTableFromStack(nullptr), m_pfnAllocateAndGetUdpExTableFromStack(nullptr),
-	m_pfnQueryTagInformation(nullptr)
+	m_hIpHlpApi(nullptr), m_pfnGetExtendedTcpTable(nullptr), m_pfnGetExtendedUdpTable(nullptr), m_pfnGetTcpTable(nullptr), 
+	m_pfnGetUdpTable(nullptr), m_pfnAllocateAndGetTcpExTableFromStack(nullptr), m_pfnAllocateAndGetUdpExTableFromStack(nullptr)
 {
 	initializeHelperLibs();
 }
@@ -31,6 +30,7 @@ NetworkConnections::~NetworkConnections()
 	deinitializeHelperLibs();
 }
 
+/* initialze helper libraries we use to build the connection table */
 void NetworkConnections::initializeHelperLibs()
 {
 	m_hIpHlpApi = LoadLibrary(L"iphlpapi.dll");
@@ -41,14 +41,12 @@ void NetworkConnections::initializeHelperLibs()
 	m_pfnAllocateAndGetTcpExTableFromStack = reinterpret_cast<PAllocateAndGetTcpExTableFromStack>(GetProcAddress(m_hIpHlpApi, "AllocateAndGetTcpExTableFromStack"));
 	m_pfnAllocateAndGetUdpExTableFromStack = reinterpret_cast<PAllocateAndGetUdpExTableFromStack>(GetProcAddress(m_hIpHlpApi, "AllocateAndGetUdpExTableFromStack"));
 
-	m_hAdvApi32 = LoadLibrary(L"advapi32.dll");
-	m_pfnQueryTagInformation = reinterpret_cast<PQueryTagInformation>(GetProcAddress(m_hAdvApi32, "I_QueryTagInformation"));
+	m_AdvApi32 = AdvApi32();
 }
 
 void NetworkConnections::deinitializeHelperLibs() const
 {
 	FreeLibrary(m_hIpHlpApi);
-	FreeLibrary(m_hAdvApi32);
 }
 
 vector<NetworkConnections::ConnectionEntry> NetworkConnections::getConnectionsTable() const
@@ -80,7 +78,12 @@ void NetworkConnections::printConnections()
 
 }
 
+/*
+This function builds the connections table using the GetXXXTable APIs.
+A socket corresponding PID will not be included.
 
+This is a fallback scenario. should be supported for Win >= 2K.
+*/
 void NetworkConnections::buildConnectionsTableNoPid()
 {
 	if (!(m_pfnGetTcpTable && m_pfnGetUdpTable))
@@ -139,7 +142,7 @@ void NetworkConnections::buildConnectionsTableNoPid()
 					UDP,
 					IPv4,
 					ipAddressAsString(IPv4, &udpRow.dwLocalAddr),
-					udpRow.dwLocalPort,
+					ntohs(static_cast<USHORT>(udpRow.dwLocalPort)),
 					"",
 					0,
 					"",
@@ -157,6 +160,12 @@ void NetworkConnections::buildConnectionsTableNoPid()
 	}
 }
 
+/*
+This function builds the connections table using the undocumented AllocateAndGetXXXExTableFromStack APIs.
+they should include PID as well, and should be supported on Win2K up to XP.
+
+If those API aren't supported, a fallback occurs.
+*/
 void NetworkConnections::buildConnectionsTableWin2000()
 {
 	if (!(m_pfnAllocateAndGetTcpExTableFromStack && m_pfnAllocateAndGetUdpExTableFromStack))
@@ -217,6 +226,10 @@ void NetworkConnections::buildConnectionsTableWin2000()
 	}
 }
 
+/*
+This method builds the connections table using the newer GetExtendedXXXTable API.
+if theyr'e not supported, a fallback occurs.
+*/
 void NetworkConnections::buildConnectionsTable()
 {
 	/* clear old entries */
@@ -250,7 +263,7 @@ void NetworkConnections::buildConnectionsTable()
 					ntohs(static_cast<USHORT>(tcpRow.dwRemotePort)),
 					connectionStateAsString(tcpRow.dwState),
 					tcpRow.dwOwningPid,
-					getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
+					m_AdvApi32.getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
 					timestampAsString(tcpRow.liCreateTimestamp)
 				};
 				m_ConnectionTable.push_back(e);
@@ -284,7 +297,7 @@ void NetworkConnections::buildConnectionsTable()
 					ntohs(static_cast<USHORT>(tcpRow.dwRemotePort)),
 					connectionStateAsString(tcpRow.dwState),
 					tcpRow.dwOwningPid,
-					getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
+					m_AdvApi32.getSerivceNameByTag(tcpRow.dwOwningPid, *reinterpret_cast<PULONG>(tcpRow.OwningModuleInfo)),
 					timestampAsString(tcpRow.liCreateTimestamp)
 				};
 				m_ConnectionTable.push_back(e);
@@ -318,7 +331,7 @@ void NetworkConnections::buildConnectionsTable()
 					0,
 					"",
 					udpRow.dwOwningPid,
-					getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
+					m_AdvApi32.getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
 					timestampAsString(udpRow.liCreateTimestamp)
 				};
 				m_ConnectionTable.push_back(e);
@@ -352,7 +365,7 @@ void NetworkConnections::buildConnectionsTable()
 					0,
 					"",
 					udpRow.dwOwningPid,
-					getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
+					m_AdvApi32.getSerivceNameByTag(udpRow.dwOwningPid, *reinterpret_cast<PULONG>(udpRow.OwningModuleInfo)),
 					timestampAsString(udpRow.liCreateTimestamp)
 				};
 				m_ConnectionTable.push_back(e);
@@ -365,6 +378,9 @@ void NetworkConnections::buildConnectionsTable()
 	}
 }
 
+/*
+Converts a timpstamp given in a LONG_INTEGER format into a human-readable timestamp string
+*/
 string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 {
 	ostringstream timestamp;
@@ -380,31 +396,59 @@ string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 
 	return timestamp.str();
 }
-
+/*
+Converts an network byte-order IP into a human-readable IP string representation
+*/
+#define IP6_BUFF_LEN  16
 string NetworkConnections::ipAddressAsString(IPVersion ver, PVOID addr)
 {
-	string ipAddress;
-	CHAR ipString[INET6_ADDRSTRLEN] = { '\0' };
+	ostringstream ipAddress;
 
 	switch (ver)
 	{
 	case IPv4:
-		in_addr ipv4Addr;
-		ipv4Addr.S_un.S_addr = *static_cast<DWORD *>(addr);
-		InetNtopA(AF_INET, &ipv4Addr, ipString, INET6_ADDRSTRLEN);
-		ipAddress = ipString;
-		break;
-	case IPv6:
-		in6_addr ipv6Addr;
-		memcpy(ipv6Addr.u.Byte, addr, sizeof(ipv6Addr.u.Byte));
-		InetNtopA(AF_INET6, &ipv6Addr, ipString, INET6_ADDRSTRLEN);
-		ipAddress = ipString;
+	{
+		DWORD ip;
+		unsigned char ipBytes[4];
+		ip = *static_cast<DWORD *>(addr);
+		for (auto i = 0; i < sizeof(ipBytes); ++i)
+		{
+			ipBytes[i] = (ip >> 8 * i) & 0xFF;
+		}
+		ipAddress << static_cast<unsigned int>(ipBytes[0]) << "." <<
+			static_cast<unsigned int>(ipBytes[1]) << "." <<
+			static_cast<unsigned int>(ipBytes[2]) << "." <<
+			static_cast<unsigned int>(ipBytes[3]);
 		break;
 	}
+	case IPv6:
+	{
+		PUCHAR ip6 = static_cast<PUCHAR>(addr);
+		ipAddress << "[";
+		for (auto i = 0; i < IP6_BUFF_LEN; i += 2)
+		{
+			WORD part = ip6[i] << 8 | ip6[i + 1];
+			if (part)
+			{
+				if (i != 0)
+				{
+					/* add seperator */
+					ipAddress << ":";
+				}
+				ipAddress << hex << static_cast<int>(part);
+			}
+		}
+		ipAddress << "]";
+		break;
+	}
+	}
 
-	return ipAddress;
+	return ipAddress.str();
 }
 
+/*
+Converts a TCP state into a string representation.
+*/
 string NetworkConnections::connectionStateAsString(DWORD state)
 {
 	if (state < MIB_TCP_STATE_CLOSED || state > MIB_TCP_STATE_DELETE_TCB)
@@ -415,26 +459,4 @@ string NetworkConnections::connectionStateAsString(DWORD state)
 	return TCP_STATES_STR[state];
 }
 
-wstring NetworkConnections::getSerivceNameByTag(ULONG pid, ULONG serviceTag) const
-{
-	SC_SERVICE_TAG_QUERY query;
-	wstring serviceName;
 
-	if (m_pfnQueryTagInformation)
-	{
-		query.ProcessId = pid;
-		query.ServiceTag = serviceTag;
-		query.Unknown = 0;
-		query.Buffer = nullptr;
-
-		m_pfnQueryTagInformation(nullptr, ServiceNameFromTagInformation, &query);
-
-		if (query.Buffer)
-		{
-			serviceName = wstring(static_cast<const wchar_t*>(query.Buffer));
-		}
-		LocalFree(query.Buffer);
-	}
-
-	return serviceName;
-}
