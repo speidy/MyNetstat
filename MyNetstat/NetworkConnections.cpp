@@ -400,6 +400,7 @@ string NetworkConnections::timestampAsString(const LARGE_INTEGER& ts)
 Converts an network byte-order IP into a human-readable IP string representation
 */
 #define IP6_BUFF_LEN  16
+#define IP4_BUFF_LEN  4
 string NetworkConnections::ipAddressAsString(IPVersion ver, PVOID addr)
 {
 	ostringstream ipAddress;
@@ -409,16 +410,16 @@ string NetworkConnections::ipAddressAsString(IPVersion ver, PVOID addr)
 	case IPv4:
 	{
 		DWORD ip;
-		unsigned char ipBytes[4];
 		ip = *static_cast<DWORD *>(addr);
-		for (auto i = 0; i < sizeof(ipBytes); ++i)
+		for (auto i = 0; i < IP4_BUFF_LEN; ++i)
 		{
-			ipBytes[i] = (ip >> 8 * i) & 0xFF;
+			if (i != 0)
+			{
+				/* add seperator */
+				ipAddress << ".";
+			}
+			ipAddress << static_cast<unsigned int>((ip >> 8 * i) & 0xFF);
 		}
-		ipAddress << static_cast<unsigned int>(ipBytes[0]) << "." <<
-			static_cast<unsigned int>(ipBytes[1]) << "." <<
-			static_cast<unsigned int>(ipBytes[2]) << "." <<
-			static_cast<unsigned int>(ipBytes[3]);
 		break;
 	}
 	case IPv6:
